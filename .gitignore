@@ -1,0 +1,17 @@
+# الأسرار - ممنوع تترفع على GitHub
+.env
+.env.local
+livekit/livekit.yaml
+
+# ملفات المشروع
+node_modules/
+.next/
+out/
+
+# سجلات
+*.log
+npm-debug.log*
+
+# ملفات النظام
+.DS_Store
+Thumbs.db

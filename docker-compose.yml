@@ -1,0 +1,48 @@
+# ============ تشغيل كل السيرفرات المساعدة بأمر واحد ============
+# الأمر: docker compose up -d
+# بيشغل: قاعدة البيانات + Redis + سيرفر الفيديو LiveKit
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: academy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: academy-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: academy-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit/livekit.yaml
+    env_file:
+      - .env
+    ports:
+      - "7880:7880"                        # التواصل مع التطبيق (Signal)
+      - "7881:7881"                        # الفيديو عبر TCP
+      - "50000-50100:50000-50100/udp"      # الفيديو عبر UDP
+    volumes:
+      - ./livekit:/etc/livekit
+    depends_on:
+      - redis
+
+volumes:
+  pgdata:
