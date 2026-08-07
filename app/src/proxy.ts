@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { decrypt } from "@/lib/session";
 
 // المسارات اللي محتاجة دخول
-const protectedRoutes = ["/dashboard", "/profile", "/teacher", "/student", "/join", "/cashier", "/admin", "/parent", "/staff"];
+const protectedRoutes = ["/dashboard", "/profile", "/teacher", "/student", "/join", "/cashier", "/admin", "/parent", "/staff", "/family"];
 // المسارات العامة (للمش بس)
 const publicRoutes = ["/auth/login", "/auth/register"];
 

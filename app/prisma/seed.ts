@@ -152,6 +152,31 @@ async function main() {
   if (!invoice) await prisma.nurseryInvoice.create({ data: { invoiceNumber: "NINV-SEED-001", childId: testChild.id, subscriptionId: subscription.id, amount: 2250, dueDate: subscription.nextDueDate } });
   await prisma.payment.upsert({ where: { receiptNumber: "SEED-RECEIPT-001" }, update: {}, create: { receiptNumber: "SEED-RECEIPT-001", studentId: student.id, cashierId: cashier.id, classId: testClass.id, amount: 150, method: "CASH", status: "PAID", description: "دفعة بيانات الاختبار" } });
 
+  // ===== Family OS: أحداث العائلة والخطة اليومية (بيانات تجريبية) =====
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "academy" } });
+  const parentPerson = await prisma.person.findUnique({ where: { userId: parent.id } });
+  const testChildPerson = await prisma.person.findUnique({ where: { externalKey: `child:${testChild.id}` } });
+  if (tenant) {
+    const family = await prisma.family.findFirst({ where: { tenantId: tenant.id, headPersonId: parentPerson?.id } }) ?? await prisma.family.findFirst({ where: { tenantId: tenant.id } }) ?? await prisma.family.create({ data: { tenantId: tenant.id, name: "عائلة الاختبار", headPersonId: parentPerson?.id ?? null } });
+    const familyEvents = [
+      { title: "مقابلة أولياء الأمور", type: "APPOINTMENT" as const, startsAt: new Date(Date.now() + 3 * 86400000), endsAt: new Date(Date.now() + 3 * 86400000 + 3600000), location: "مقر الأكاديمية", notes: "مناقشة تقدم الطفل." },
+      { title: "حصة السباحة", type: "ACTIVITY" as const, startsAt: new Date(Date.now() + 5 * 86400000), endsAt: new Date(Date.now() + 5 * 86400000 + 7200000), location: "نادي المدرسة" },
+    ];
+    for (const ev of familyEvents) {
+      const exists = await prisma.familyEvent.findFirst({ where: { tenantId: tenant.id, title: ev.title } });
+      if (!exists) await prisma.familyEvent.create({ data: { tenantId: tenant.id, familyId: family.id, ...ev, createdById: parentPerson?.id ?? null } });
+    }
+    const planSeed = [
+      { title: "مراجعة جدول الضرب", type: "TASK" as const, time: "17:00", assignedToId: testChildPerson?.id ?? null },
+      { title: "تقرير متابعة الأخصائية", type: "REMINDER" as const, time: "19:00", assignedToId: parentPerson?.id ?? null },
+      { title: "أنشطة إبداعية", type: "ACTIVITY" as const, time: "16:00", assignedToId: null },
+    ];
+    for (const item of planSeed) {
+      const exists = await prisma.planItem.findFirst({ where: { tenantId: tenant.id, title: item.title } });
+      if (!exists) await prisma.planItem.create({ data: { tenantId: tenant.id, familyId: family.id, day: new Date(), ...item } });
+    }
+  }
+
   // بيانات كثيرة للاختبار — كل عنصر له مفتاح ثابت حتى يمكن تشغيل seed أكثر من مرة.
   const bulkTeachers = [];
   for (let i = 2; i <= 9; i++) {

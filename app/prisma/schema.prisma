@@ -119,6 +119,23 @@ enum RelationshipType {
   OTHER // علاقة أخرى
 }
 
+// نوع حدث في تقويم العائلة
+enum FamilyEventType {
+  LESSON // حصة
+  ACTIVITY // نشاط
+  APPOINTMENT // موعد (طبيب/مقابلة)
+  BIRTHDAY // عيد ميلاد
+  CUSTOM // مناسبة خاصة
+}
+
+// نوع عنصر في الخطة اليومية
+enum PlanItemType {
+  TASK // مهمة
+  LESSON // حصة
+  ACTIVITY // نشاط
+  REMINDER // تذكير
+}
+
 // المستخدم (مدرس / طالب / أدمن / موظف)
 model User {
   id           String   @id @default(cuid())
@@ -573,6 +590,8 @@ model Person {
   familiesHeaded Family[]      @relation("FamilyHead")
   relationshipsA Relationship[] @relation("PersonRelationshipsA")
   relationshipsB Relationship[] @relation("PersonRelationshipsB")
+  createdEvents  FamilyEvent[] @relation("EventCreator")
+  assignedPlanItems PlanItem[] @relation("PlanAssignee")
 
   @@index([tenantId])
 }
@@ -588,7 +607,9 @@ model Family {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  members FamilyMember[]
+  members   FamilyMember[]
+  events    FamilyEvent[]
+  planItems PlanItem[]
 
   @@index([tenantId])
 }
@@ -622,4 +643,51 @@ model Relationship {
 
   @@index([fromPersonId])
   @@index([toPersonId])
+}
+
+// ===== Family OS: التقويم العائلي =====
+// حدث في تقويم العائلة (حصة/نشاط/موعد/عيد ميلاد/مناسبة)
+
+model FamilyEvent {
+  id         String          @id @default(cuid())
+  tenantId   String
+  familyId   String?
+  family     Family?         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  title      String
+  type       FamilyEventType @default(CUSTOM)
+  startsAt   DateTime
+  endsAt     DateTime?
+  location   String?
+  notes      String?
+  completed  Boolean         @default(false)
+  createdById String?
+  createdBy  Person?         @relation("EventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([tenantId, startsAt])
+  @@index([familyId])
+}
+
+// عنصر في الخطة اليومية للعائلة (مهمة/حصة/نشاط/تذكير)
+
+model PlanItem {
+  id           String       @id @default(cuid())
+  tenantId     String
+  familyId     String?
+  family       Family?      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  day          DateTime // يوم الخطة (التاريخ فقط)
+  title        String
+  time         String? // "HH:mm"
+  type         PlanItemType @default(TASK)
+  assignedToId String?
+  assignedTo   Person?      @relation("PlanAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  done         Boolean      @default(false)
+  doneAt       DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([tenantId, day])
+  @@index([familyId])
+  @@index([assignedToId])
 }

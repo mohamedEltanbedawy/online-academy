@@ -30,7 +30,7 @@ const roleNav: Record<string, { href: string; label: string }[]> = {
   STUDENT: [{ href: "/student", label: "لوحة الطالب" }],
   ADMIN: [{ href: "/admin", label: "لوحة الإدارة" }],
   CASHIER: [{ href: "/cashier", label: "التحصيل" }],
-  PARENT: [{ href: "/parent", label: "أطفالي" }],
+  PARENT: [{ href: "/parent", label: "أطفالي" }, { href: "/family", label: "عائلتي" }],
   STAFF: [{ href: "/staff", label: "الأطفال" }],
 };
 
@@ -70,6 +70,9 @@ export async function AppShell({
                 {t(item.label, locale)}
               </Link>
             ))}
+            <Link href="/family" className="nav-link">
+              {t("عائلتي", locale)}
+            </Link>
             <Link href="/profile" className="nav-link">
               {t("ملفي الشخصي", locale)}
             </Link>
