@@ -38,10 +38,27 @@ services:
     ports:
       - "7880:7880"                        # التواصل مع التطبيق (Signal)
       - "7881:7881"                        # الفيديو عبر TCP
+      - "3478:3478/udp"                    # TURN/UDP
       - "50000-50100:50000-50100/udp"      # الفيديو عبر UDP
     volumes:
       - ./livekit:/etc/livekit
     depends_on:
+      - redis
+
+  egress:
+    image: livekit/egress:latest
+    container_name: academy-egress
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      EGRESS_CONFIG_FILE: /etc/livekit/egress.yaml
+      LIVEKIT_WS_URL: ws://livekit:7880
+    volumes:
+      - ./livekit/egress.yaml:/etc/livekit/egress.yaml:ro
+      - ./recordings:/recordings
+    depends_on:
+      - livekit
       - redis
 
 volumes:

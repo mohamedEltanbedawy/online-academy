@@ -9,6 +9,11 @@ rtc:
   use_external_ip: false
   enable_loopback_candidate: true
 
+# TURN محلي للاتصالات التي لا تستطيع استخدام UDP المباشر
+turn:
+  enabled: true
+  udp_port: 3478
+
 redis:
   address: redis:6379
 

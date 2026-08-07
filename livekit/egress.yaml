@@ -1,0 +1,5 @@
+# إعداد Egress محلي. المفاتيح تُقرأ من متغيرات البيئة في docker-compose.
+redis:
+  address: redis:6379
+
+insecure: true

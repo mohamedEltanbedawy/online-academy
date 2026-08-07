@@ -11,6 +11,7 @@ out/
 # سجلات
 *.log
 npm-debug.log*
+backups/
 
 # ملفات النظام
 .DS_Store

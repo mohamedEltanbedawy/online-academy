@@ -1,0 +1,495 @@
+// ملف قاعدة البيانات — الأصناف (Models) بتاعه كل حاجة في المنصة
+// أي تعديل هنا → تعمل الأمر: npx prisma migrate dev
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// الأدوار في المنصة
+enum Role {
+  STUDENT // طالب
+  TEACHER // مدرس
+  ADMIN // مشرف عام
+  CASHIER // موظف منفذ بيع
+  PARENT // ولي أمر
+  STAFF // أخصائي أو موظف حضانة
+}
+
+// الطالب جاي من فين؟ (بيحدد نموذج الربح)
+enum RevenueSource {
+  PLATFORM // جاي من دعاية المنصة → المنصة بتاخد نسبة
+  TEACHER // جاي مع المدرس نفسه → المنصة بتاخد كلفة ثابتة
+}
+
+// حالة الاشتراك في فصل
+enum EnrollmentStatus {
+  ACTIVE // مشترك وبيحضر
+  BLOCKED // المدرس منعه
+  LEFT // الطالب ساب الفصل
+}
+
+// حالة الفصل
+enum ClassStatus {
+  ACTIVE // شغال
+  ARCHIVED // مقفول
+}
+
+// حالة حل الطالب للواجب
+enum SubmissionStatus {
+  SUBMITTED // تم التسليم وينتظر التصحيح
+  GRADED // تم التصحيح
+}
+
+enum RecordingStatus {
+  STARTING
+  RECORDING
+  STOPPED
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_WALLET
+  BANK_TRANSFER
+  GATEWAY
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum AttendanceMode {
+  ONSITE
+  ONLINE
+}
+
+enum ActivityEnrollmentStatus {
+  REGISTERED
+  WAITLISTED
+  CANCELLED
+}
+
+enum NurserySubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  PAST_DUE
+}
+
+enum NurseryInvoiceStatus {
+  ISSUED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// المستخدم (مدرس / طالب / أدمن / موظف)
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String   @unique
+  passwordHash String
+  role         Role     @default(STUDENT)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacherProfile TeacherProfile?
+  classes        Class[]
+  enrollments    Enrollment[]
+  submissions    Submission[]
+  studentPayments Payment[] @relation("StudentPayments")
+  cashierPayments Payment[] @relation("CashierPayments")
+  auditLogs      AuditLog[] @relation("AuditActors")
+  teacherPayouts Payout[]   @relation("TeacherPayouts")
+  guardianLinks  ChildGuardian[] @relation("GuardianChildren")
+  assessmentsGiven ChildAssessment[] @relation("AssessmentAssessor")
+  staffProfile StaffProfile?
+  recordedAttendance ChildAttendance[] @relation("AttendanceRecorder")
+  createdActivities Activity[] @relation("ActivityCreator")
+}
+
+// بيانات المدرس التكميلية (المادة والوصف والأسعار الافتراضية)
+model TeacherProfile {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject                String // المادة الأساسية
+  bio                    String? // وصف المدرس
+  defaultHourlyRate      Decimal  @default(0) @db.Decimal(10, 2) // سعر الحصة الافتراضي
+  defaultPlatformPercent Decimal  @default(0) @db.Decimal(5, 2) // نسبة المنصة الافتراضية لطلبة الدعاية
+  defaultFixedFee        Decimal  @default(0) @db.Decimal(10, 2) // الكلفة الثابتة الافتراضية لطلبة المدرس
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// الفصل / الكورس — بيحدد المدرس طريقة الربح فيه
+model Class {
+  id              String      @id @default(cuid())
+  teacherId       String
+  teacher         User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  name            String // اسم الفصل
+  subject         String // المادة
+  description     String? // وصف الفصل
+  pricePerHour    Decimal     @db.Decimal(10, 2) // سعر الحصة للطالب
+  platformPercent Decimal     @default(0) @db.Decimal(5, 2) // نسبة المنصة من حصة طالب الدعاية (٪)
+  fixedFee        Decimal     @default(0) @db.Decimal(10, 2) // كلفة المنصة الثابتة لكل حصة لطالب المدرس
+  inviteCode      String      @unique // كود دعوة الطلبة
+  status          ClassStatus @default(ACTIVE)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  enrollments Enrollment[]
+  schedules   SessionSchedule[]
+  homeworks   Homework[]
+  recordings  Recording[]
+  payments    Payment[]
+}
+
+// اشتراك طالب في فصل
+model Enrollment {
+  id        String           @id @default(cuid())
+  classId   String
+  class     Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  source    RevenueSource    @default(TEACHER) // الطالب جاي من فين؟
+  status    EnrollmentStatus @default(ACTIVE)
+  joinedAt  DateTime         @default(now())
+
+  @@unique([classId, studentId])
+}
+
+// جدول الحصص الأسبوعي المتكرر للفصل
+model SessionSchedule {
+  id              String   @id @default(cuid())
+  classId         String
+  class           Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  title           String? // تسمية اختيارية (مثال: حصة الجبر)
+  dayOfWeek       Int // 0=الأحد، 1=الاثنين ... 6=السبت (بنفس ترتيب getDay في JS)
+  startTime       String // "HH:mm"
+  durationMinutes Int      @default(60)
+  createdAt       DateTime @default(now())
+}
+
+// واجب مرتبط بفصل
+model Homework {
+  id           String   @id @default(cuid())
+  classId      String
+  class        Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  title        String
+  instructions String
+  dueAt        DateTime?
+  maxScore     Int      @default(100)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  submissions Submission[]
+}
+
+// حل طالب لواجب، بحد أقصى حل واحد لكل طالب
+model Submission {
+  id         String           @id @default(cuid())
+  homeworkId String
+  homework   Homework         @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answer     String
+  status     SubmissionStatus @default(SUBMITTED)
+  score      Int?
+  feedback   String?
+  submittedAt DateTime         @default(now())
+  gradedAt   DateTime?
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([homeworkId, studentId])
+}
+
+// تسجيل فيديو لحصة مباشرة
+model Recording {
+  id            String          @id @default(cuid())
+  classId       String
+  class         Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  egressId      String          @unique
+  title         String
+  status        RecordingStatus @default(STARTING)
+  active        Boolean         @default(true)
+  filePath      String?
+  startedAt     DateTime         @default(now())
+  endedAt       DateTime?
+  durationSeconds Int?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+// دفعة مالية — المبلغ محفوظ بدقة خانتين عشريتين
+model Payment {
+  id            String        @id @default(cuid())
+  receiptNumber String        @unique
+  studentId     String?
+  student       User?         @relation("StudentPayments", fields: [studentId], references: [id], onDelete: SetNull)
+  cashierId     String
+  cashier       User          @relation("CashierPayments", fields: [cashierId], references: [id], onDelete: Restrict)
+  classId       String?
+  class         Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod
+  status        PaymentStatus @default(PAID)
+  description   String
+  gatewayOrderId       String? @unique
+  gatewayTransactionId String?
+  gatewayResponse      Json?
+  paidAt        DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  payout        Payout?
+  nurseryInvoiceId String? @unique
+  nurseryInvoice NurseryInvoice? @relation(fields: [nurseryInvoiceId], references: [id], onDelete: SetNull)
+}
+
+// سجل تغييرات الإدارة
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation("AuditActors", fields: [actorId], references: [id], onDelete: Restrict)
+  action    String
+  entity    String
+  entityId  String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+// تسوية نصيب المدرس من دفعة
+model Payout {
+  id            String       @id @default(cuid())
+  paymentId     String       @unique
+  payment       Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  teacherId     String
+  teacher       User         @relation("TeacherPayouts", fields: [teacherId], references: [id], onDelete: Restrict)
+  grossAmount   Decimal      @db.Decimal(12, 2)
+  platformFee   Decimal      @db.Decimal(12, 2)
+  teacherAmount Decimal      @db.Decimal(12, 2)
+  status        PayoutStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
+  paidAt        DateTime?
+}
+
+// ملف طفل في الحضانة والأكاديمية
+model Child {
+  id          String   @id @default(cuid())
+  name        String
+  birthDate   DateTime
+  stage       String?
+  schoolGrade String?
+  notes       String?
+  medicalNotes String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guardians ChildGuardian[]
+  programs  ChildProgram[]
+  assessments ChildAssessment[]
+  attendance ChildAttendance[]
+  activities ActivityEnrollment[]
+  subscriptions NurserySubscription[]
+  invoices NurseryInvoice[]
+}
+
+// ربط طفل بولي أمر مع إمكانية وجود أكثر من ولي
+model ChildGuardian {
+  childId    String
+  child      Child  @relation(fields: [childId], references: [id], onDelete: Cascade)
+  guardianId String
+  guardian   User   @relation("GuardianChildren", fields: [guardianId], references: [id], onDelete: Cascade)
+  relation   String  @default("ولي أمر")
+  primary    Boolean @default(false)
+
+  @@id([childId, guardianId])
+  @@index([guardianId])
+}
+
+// مرحلة تعليمية قابلة للتعديل من لوحة الإدارة
+model AcademyStage {
+  id          String    @id @default(cuid())
+  name        String
+  ageMin      Int
+  ageMax      Int
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  programs AcademyProgram[]
+}
+
+// قالب البرنامج: المنهج الرسمي والإنجليزي والرياضيات والأنشطة
+model AcademyProgram {
+  id           String        @id @default(cuid())
+  stageId      String
+  stage        AcademyStage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  subjectsJson Json?
+  objectives   String?
+  version      Int           @default(1)
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  childPrograms ChildProgram[]
+}
+
+// نسخة مخصصة من برنامج لطفل بعينه
+model ChildProgram {
+  id          String         @id @default(cuid())
+  childId     String
+  child       Child          @relation(fields: [childId], references: [id], onDelete: Cascade)
+  programId   String
+  program     AcademyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  customPlan  String?
+  focusAreas  Json?
+  startedAt   DateTime       @default(now())
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([childId, active])
+}
+
+// مهارة قابلة للتقييم
+model Skill {
+  id          String   @id @default(cuid())
+  name        String
+  category    String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  assessments ChildAssessment[]
+}
+
+// تقييم مهارة طفل بواسطة مدرس أو أخصائي
+model ChildAssessment {
+  id          String   @id @default(cuid())
+  childId     String
+  child       Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  skillId     String
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  assessorId  String
+  assessor    User     @relation("AssessmentAssessor", fields: [assessorId], references: [id], onDelete: Restrict)
+  score       Int
+  notes       String?
+  assessedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([childId, skillId, assessedAt])
+}
+
+model StaffProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization String
+  bio          String?
+  active       Boolean  @default(true)
+}
+
+model ChildAttendance {
+  id          String           @id @default(cuid())
+  childId     String
+  child       Child            @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedById String
+  recordedBy  User             @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  date        DateTime         @default(now())
+  status      AttendanceStatus
+  mode        AttendanceMode
+  note        String?
+  createdAt   DateTime         @default(now())
+
+  @@unique([childId, date, mode])
+  @@index([childId, date])
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  title       String
+  type        String
+  description String?
+  scheduledAt DateTime
+  location    String?
+  capacity    Int      @default(20)
+  active      Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("ActivityCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+
+  enrollments ActivityEnrollment[]
+}
+
+model ActivityEnrollment {
+  id         String                   @id @default(cuid())
+  activityId String
+  activity   Activity                 @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  childId    String
+  child      Child                    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  status     ActivityEnrollmentStatus @default(REGISTERED)
+  createdAt  DateTime                 @default(now())
+
+  @@unique([activityId, childId])
+}
+
+model NurserySubscription {
+  id            String                    @id @default(cuid())
+  childId       String
+  child         Child                     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  planName      String
+  monthlyAmount Decimal                   @db.Decimal(12, 2)
+  discount      Decimal                   @default(0) @db.Decimal(12, 2)
+  startDate     DateTime
+  nextDueDate   DateTime
+  status        NurserySubscriptionStatus @default(ACTIVE)
+  notes         String?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  invoices NurseryInvoice[]
+}
+
+model NurseryInvoice {
+  id             String                @id @default(cuid())
+  invoiceNumber  String                @unique
+  childId        String
+  child          Child                 @relation(fields: [childId], references: [id], onDelete: Cascade)
+  subscriptionId String
+  subscription   NurserySubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount         Decimal               @db.Decimal(12, 2)
+  dueDate        DateTime
+  status         NurseryInvoiceStatus  @default(ISSUED)
+  paidAt         DateTime?
+  createdAt      DateTime              @default(now())
+  payment        Payment?
+}

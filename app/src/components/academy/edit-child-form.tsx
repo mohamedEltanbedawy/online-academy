@@ -1,0 +1,9 @@
+"use client";
+
+import { useActionState } from "react";
+import { updateChild, type AcademyActionState } from "@/app/actions/academy";
+
+export function EditChildForm({ child }: { child: { id: string; name: string; stage: string | null; schoolGrade: string | null; notes: string | null; medicalNotes: string | null } }) {
+  const [state, action, pending] = useActionState<AcademyActionState, FormData>(updateChild, undefined);
+  return <form action={action} className="space-y-4"><input type="hidden" name="childId" value={child.id} />{state?.message && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.message}</p>}<input name="name" required defaultValue={child.name} placeholder="اسم الطفل" className="w-full rounded-lg border border-slate-300 px-3 py-2" />{state?.errors?.name && <p className="text-sm text-red-600">{state.errors.name[0]}</p>}<div className="grid gap-3 sm:grid-cols-2"><select name="stage" defaultValue={child.stage ?? ""} className="rounded-lg border border-slate-300 px-3 py-2"><option value="">المرحلة</option><option>استقبال</option><option>KG 1</option><option>KG 2</option><option>ابتدائي</option><option>إعدادي</option></select><input name="schoolGrade" defaultValue={child.schoolGrade ?? ""} placeholder="الصف الدراسي" className="rounded-lg border border-slate-300 px-3 py-2" /></div><textarea name="notes" defaultValue={child.notes ?? ""} rows={3} placeholder="ملاحظات تربوية" className="w-full rounded-lg border border-slate-300 px-3 py-2" /><textarea name="medicalNotes" defaultValue={child.medicalNotes ?? ""} rows={2} placeholder="ملاحظات طبية" className="w-full rounded-lg border border-slate-300 px-3 py-2" /><button type="submit" disabled={pending} className="rounded-lg bg-blue-600 px-4 py-2 font-bold text-white disabled:opacity-50">{pending ? "جاري الحفظ..." : "حفظ التعديلات"}</button></form>;
+}
