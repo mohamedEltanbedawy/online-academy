@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { AssessmentForm } from "@/components/academy/assessment-form";
 import { AssignProgramForm } from "@/components/academy/assign-program-form";
 import { AppShell } from "@/components/app-shell";
@@ -21,6 +22,10 @@ export default async function AdminChildDetailPage({ params }: { params: Promise
       title={`ملف ${child.name}`}
       subtitle={`${child.stage || "مرحلة غير محددة"} • ولي الأمر: ${child.guardians[0]?.guardian.name ?? "-"}`}
     >
+      <div className="mb-6 flex flex-wrap gap-2">
+        <Link href={`/admin/children/${child.id}/attendance`} className="btn-outline">الحضور</Link>
+        <Link href={`/admin/children/${child.id}/health`} className="btn-outline">الملف الصحي</Link>
+      </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="section-card">
           <h2 className="section-title">البرنامج المخصص</h2>

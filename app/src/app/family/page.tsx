@@ -123,7 +123,10 @@ export default async function FamilyPage() {
                       <span className="badge badge-violet">برامج: {programsCount}</span>
                       <span className="badge badge-blue">أنشطة: {activitiesCount}</span>
                     </div>
-                    <Link href={`/parent/children/${child.id}`} className="mt-4 inline-block text-sm font-bold text-blue-600 hover:underline">فتح ملف الطفل ←</Link>
+                    <div className="mt-4 flex gap-4">
+                      <Link href={`/parent/children/${child.id}`} className="text-sm font-bold text-blue-600 hover:underline">ملف الطفل ←</Link>
+                      <Link href={`/family/health/${child.id}`} className="text-sm font-bold text-emerald-600 hover:underline">الصحة ←</Link>
+                    </div>
                   </article>
                 ))}
               </div>

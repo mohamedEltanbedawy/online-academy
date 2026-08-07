@@ -19,6 +19,9 @@ const adminNav = [
   { href: "/admin/payments", title: "تقرير المدفوعات", icon: "💳", color: "from-blue-500 to-cyan-600" },
   { href: "/admin/payouts", title: "تسويات المدرسين", icon: "🧾", color: "from-fuchsia-500 to-purple-600" },
   { href: "/admin/audit", title: "سجل التعديلات", icon: "📜", color: "from-slate-500 to-slate-700" },
+  { href: "/admin/ai", title: "الذكاء الاصطناعي", icon: "🤖", color: "from-purple-500 to-indigo-600" },
+  { href: "/admin/permissions", title: "الأدوار والصلاحيات", icon: "🔐", color: "from-teal-500 to-cyan-600" },
+  { href: "/admin/telegram", title: "بوت تيليجرام", icon: "✈️", color: "from-sky-500 to-blue-600" },
 ];
 
 export default async function AdminDashboardPage() {

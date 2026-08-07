@@ -228,6 +228,85 @@ async function main() {
     await prisma.recording.upsert({ where: { egressId }, update: {}, create: { egressId, classId: bulkClasses[i].id, title: `تسجيل اختبار ${i + 1}`, status: "STOPPED", durationSeconds: 1800 + i * 120, filePath: null, startedAt: new Date(Date.now() - (i + 1) * 86400000), endedAt: new Date(Date.now() - (i + 1) * 86400000 + 1800000) } });
   }
 
+  // ===== M3: الصلاحيات (RBAC) =====
+  const permissionCatalog: { code: string; label: string; module: string }[] = [
+    { code: "dashboard:view", label: "مشاهدة اللوحة الرئيسية", module: "dashboard" },
+    { code: "profile:view", label: "مشاهدة الملف الشخصي", module: "profile" },
+    { code: "admin:view", label: "لوحة الإدارة", module: "admin" },
+    { code: "admin:users:manage", label: "إدارة المستخدمين والصلاحيات", module: "admin" },
+    { code: "admin:audit:view", label: "سجل النشاط الإداري", module: "admin" },
+    { code: "children:view", label: "مشاهدة سجلات الأطفال", module: "children" },
+    { code: "children:manage", label: "إضافة/تعديل سجلات الأطفال", module: "children" },
+    { code: "classes:view", label: "مشاهدة الفصول", module: "classes" },
+    { code: "classes:manage", label: "إدارة الفصول", module: "classes" },
+    { code: "payments:view", label: "مشاهدة المدفوعات", module: "payments" },
+    { code: "payments:manage", label: "تنفيذ وإدارة المدفوعات", module: "payments" },
+    { code: "health:view", label: "مشاهدة الملف الصحي", module: "health" },
+    { code: "health:manage", label: "إضافة/تعديل البيانات الصحية", module: "health" },
+    { code: "health:documents", label: "رفع وإدارة الملفات الصحية", module: "health" },
+    { code: "ai:view", label: "مشاهدة إعدادات الـ AI", module: "ai" },
+    { code: "ai:manage", label: "إدارة موديلات الـ AI", module: "ai" },
+    { code: "family:view", label: "لوحة الأسرة", module: "family" },
+    { code: "family:manage", label: "إدارة بيانات الأسرة", module: "family" },
+    { code: "teacher:view", label: "لوحة المدرس", module: "teacher" },
+    { code: "student:view", label: "لوحة الطالب", module: "student" },
+    { code: "cashier:view", label: "لوحة الموظف", module: "cashier" },
+    { code: "staff:view", label: "لوحة الأخصائي", module: "staff" },
+  ];
+  const permissions = new Map<string, string>();
+  for (const p of permissionCatalog) {
+    const perm = await prisma.permission.upsert({ where: { code: p.code }, update: { label: p.label, module: p.module }, create: p });
+    permissions.set(p.code, perm.id);
+  }
+  const roleDefinitions: { name: string; label: string; isSystem: boolean; perms: string[] }[] = [
+    { name: "ADMIN", label: "مشرف عام", isSystem: true, perms: permissionCatalog.map((p) => p.code) },
+    { name: "STAFF", label: "أخصائي", isSystem: true, perms: ["dashboard:view", "profile:view", "children:view", "children:manage", "health:view", "health:manage", "health:documents", "staff:view", "family:view", "ai:view"] },
+    { name: "TEACHER", label: "مدرس", isSystem: true, perms: ["dashboard:view", "profile:view", "classes:view", "classes:manage", "teacher:view", "family:view"] },
+    { name: "STUDENT", label: "طالب", isSystem: true, perms: ["dashboard:view", "profile:view", "student:view", "family:view"] },
+    { name: "PARENT", label: "ولي أمر", isSystem: true, perms: ["dashboard:view", "profile:view", "children:view", "health:view", "family:view", "family:manage"] },
+    { name: "CASHIER", label: "موظف منفذ بيع", isSystem: true, perms: ["dashboard:view", "profile:view", "payments:view", "payments:manage", "cashier:view", "family:view"] },
+  ];
+  for (const role of roleDefinitions) {
+    const r = await prisma.accessRole.upsert({ where: { name: role.name }, update: { label: role.label }, create: { name: role.name, label: role.label, isSystem: role.isSystem } });
+    for (const code of role.perms) {
+      const pid = permissions.get(code);
+      if (pid) await prisma.rolePermission.upsert({ where: { roleId_permissionId: { roleId: r.id, permissionId: pid } }, update: {}, create: { roleId: r.id, permissionId: pid } });
+    }
+  }
+  for (const user of [admin, cashier, teacher, student, parent, staff]) {
+    const roleName = ["ADMIN", "CASHIER", "TEACHER", "STUDENT", "PARENT", "STAFF"].find((r) => user.role === r);
+    if (roleName) {
+      const r = await prisma.accessRole.findUnique({ where: { name: roleName } });
+      if (r) await prisma.userRole.upsert({ where: { userId_roleId: { userId: user.id, roleId: r.id } }, update: {}, create: { userId: user.id, roleId: r.id } });
+    }
+  }
+  // أي مستخدم موجود بدون دور → أضفه لدور افتراضي حسب الـ role
+  const allUsers = await prisma.user.findMany();
+  for (const u of allUsers) {
+    const existing = await prisma.userRole.findFirst({ where: { userId: u.id } });
+    if (!existing) {
+      const r = await prisma.accessRole.findUnique({ where: { name: u.role } });
+      if (r) await prisma.userRole.create({ data: { userId: u.id, roleId: r.id } });
+    }
+  }
+
+  // ===== M3: موديلات الـ AI =====
+  const aiModels: { name: string; provider: "GEMINI" | "OPENAI" | "OLLAMA"; modelName: string; baseUrl?: string; isDefault: boolean; enabled: boolean; supportsVision: boolean }[] = [
+    { name: "Gemini Flash (افتراضي)", provider: "GEMINI", modelName: "gemini-2.5-flash", isDefault: true, enabled: true, supportsVision: true },
+    { name: "Gemini Pro", provider: "GEMINI", modelName: "gemini-2.5-pro", isDefault: false, enabled: true, supportsVision: true },
+    { name: "OpenAI GPT-4o-mini", provider: "OPENAI", modelName: "gpt-4o-mini", isDefault: false, enabled: false, supportsVision: true },
+    { name: "Ollama محلي (llama3.1)", provider: "OLLAMA", modelName: "llama3.1", baseUrl: "http://localhost:11434", isDefault: false, enabled: false, supportsVision: false },
+  ];
+  for (const m of aiModels) {
+    const exists = await prisma.aiProvider.findFirst({ where: { provider: m.provider, modelName: m.modelName } });
+    if (!exists) await prisma.aiProvider.create({ data: { ...m, name: m.name } });
+  }
+  // مفتاح Gemini من البيئة لو موجود
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  if (geminiApiKey) {
+    await prisma.aiProvider.updateMany({ where: { provider: "GEMINI" }, data: { apiKey: geminiApiKey } });
+  }
+
   console.log("تم إنشاء الحسابات التالية:");
   console.log("أدمن   :", admin.email, "/ Admin@123456");
   console.log("موظف   :", cashier.email, "/ Admin@123456");

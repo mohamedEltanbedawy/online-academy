@@ -59,6 +59,9 @@ export default async function AdminUsersPage() {
                     <Link href={`/admin/users/${user.id}/edit`} className="font-semibold text-blue-600 hover:underline">
                       تعديل
                     </Link>
+                    <Link href={`/admin/users/${user.id}/permissions`} className="font-semibold text-violet-600 hover:underline">
+                      الصلاحيات
+                    </Link>
                   </div>
                 </td>
               </tr>

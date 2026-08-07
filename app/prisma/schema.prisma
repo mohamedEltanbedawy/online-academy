@@ -162,6 +162,10 @@ model User {
   recordedAttendance ChildAttendance[] @relation("AttendanceRecorder")
   createdActivities Activity[] @relation("ActivityCreator")
   person Person?
+  userRoles UserRole[]
+  uploadedHealthDocuments HealthDocument[] @relation("HealthDocUploader")
+  telegramChats TelegramChat[]
+  telegramLinkCodes TelegramLinkCode[]
 }
 
 // بيانات المدرس التكميلية (المادة والوصف والأسعار الافتراضية)
@@ -359,6 +363,12 @@ model Child {
   activities ActivityEnrollment[]
   subscriptions NurserySubscription[]
   invoices NurseryInvoice[]
+  growthRecords GrowthRecord[]
+  vaccinations Vaccination[]
+  sleepRecords SleepRecord[]
+  nutritionRecords NutritionRecord[]
+  medicines Medicine[]
+  healthDocuments HealthDocument[]
 
   @@index([tenantId])
 }
@@ -569,6 +579,7 @@ model Tenant {
   persons        Person[]
   families       Family[]
   relationships  Relationship[]
+  aiProviders    AiProvider[]
 }
 
 // الشخص = التوأم الرقمي لأي إنسان (له حساب دخول اختياري)
@@ -690,4 +701,216 @@ model PlanItem {
   @@index([tenantId, day])
   @@index([familyId])
   @@index([assignedToId])
+}
+
+// ===== M3: الصحة (Health) =====
+
+// قياس نمو الطفل (وزن/طول/محيط رأس)
+model GrowthRecord {
+  id       String   @id @default(cuid())
+  tenantId String?
+  childId  String
+  child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  date     DateTime // يوم القياس
+  weightKg Decimal? @db.Decimal(6, 2)
+  heightCm Decimal? @db.Decimal(6, 2)
+  headCm   Decimal? @db.Decimal(6, 2)
+  notes    String?
+  createdAt DateTime @default(now())
+
+  @@index([childId, date])
+  @@index([tenantId])
+}
+
+// تطعيم الطفل
+model Vaccination {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  childId     String
+  child       Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name        String // اسم التطعيم
+  dose        String? // الجرعة
+  date        DateTime // تاريخ التطعيم
+  nextDueDate DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([childId, date])
+  @@index([tenantId])
+}
+
+// نوم الطفل (ساعات وجودة)
+model SleepRecord {
+  id       String   @id @default(cuid())
+  tenantId String?
+  childId  String
+  child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  date     DateTime
+  hours    Decimal? @db.Decimal(4, 2) // عدد الساعات
+  quality  String? // جودة النوم (جيدة/متوسطة/سيئة)
+  notes    String?
+  createdAt DateTime @default(now())
+
+  @@index([childId, date])
+  @@index([tenantId])
+}
+
+// غذاء الطفل (وجبة وأطعمة)
+model NutritionRecord {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  childId   String
+  child     Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  date      DateTime
+  meal      String? // الوجبة (فطار/غدا/عشا/سناك)
+  foods     String // الأطعمة المتناولة
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([childId, date])
+  @@index([tenantId])
+}
+
+// دواء الطفل
+model Medicine {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  childId   String
+  child     Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name      String // اسم الدواء
+  dosage    String? // الجرعة
+  frequency String? // التكرار (مثال: كل 8 ساعات)
+  startDate DateTime?
+  endDate   DateTime?
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([childId])
+  @@index([tenantId])
+}
+
+// ملف صحي مرفوع (تقرير/شهادة تطعيم/وصفة)
+model HealthDocument {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  childId      String
+  child        Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  title        String?
+  category     String? // نوع الملف (تقرير/شهادة تطعيم/وصفة/أخرى)
+  fileName     String // اسم الملف الأصلي
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String // المسار على القرص
+  uploadedById String?
+  uploadedBy   User?    @relation("HealthDocUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([childId])
+  @@index([tenantId])
+}
+
+// ===== M3: إدارة مقدمي الـ AI =====
+
+enum AiProviderType {
+  GEMINI
+  OPENAI
+  OLLAMA
+}
+
+model AiProvider {
+  id         String         @id @default(cuid())
+  name       String // اسم يظهر في اللوحة (مثال: "Gemini Flash")
+  provider   AiProviderType // نوع المزود
+  modelName  String // اسم الموديل (مثال: gemini-2.5-flash / gpt-4o-mini / llama3.1)
+  baseUrl    String? // للموديلات المحلية (Ollama) أو وكلاء مخصصة
+  apiKey     String? // مفتاح API (نصي — لا يُرفع على GitHub)
+  isDefault  Boolean  @default(false) // الموديل الافتراضي لكل النظام
+  enabled    Boolean  @default(true)
+  supportsVision Boolean @default(false) // هل الموديل بيفهم صور وورق؟
+  temperature Float?
+  maxTokens  Int?
+  tenantId   String?
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ===== M3: الصلاحيات (RBAC) =====
+
+// صلاحية واحدة (مثال: "إدارة المستخدمين" = admin:users:manage)
+model Permission {
+  id     String @id @default(cuid())
+  code   String @unique // مثال: admin:users:manage
+  label  String // وصف عربي يظهر للمدير
+  module String // الوحدة: admin / users / health / ai / family ...
+  roles  RolePermission[]
+
+  @@index([module])
+}
+
+// دور = مجموعة صلاحيات (مثال: "مشرف عام" له كل الصلاحيات)
+model AccessRole {
+  id          String @id @default(cuid())
+  name        String @unique // ADMIN / TEACHER / PARENT ...
+  label       String // اسم عربي للدور
+  isSystem    Boolean @default(false) // أدوار النظام الأساسية (غير قابلة للحذف)
+  permissions RolePermission[]
+  users       UserRole[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  role         AccessRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// ربط المستخدم بأدواره (أكثر من دور ممكن)
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId String
+  role   AccessRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+// ===== M3: بوت تيليجرام =====
+
+// ربط محادثة تيليجرام بحساب على المنصة (بعد "الربط" برمز من اللوحة)
+model TelegramChat {
+  id       String   @id @default(cuid())
+  chatId   String   @unique // رقم المحادثة في تيليجرام
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenantId String?
+  linkedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+}
+
+// رمز ربط مؤقت يُولَّد من اللوحة ويدخله ولي الأمر في البوت
+model TelegramLinkCode {
+  id        String   @id @default(cuid())
+  code      String   @unique // رمز مكوّن من 6 أرقام/حروف
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
