@@ -126,6 +126,19 @@ async function main() {
     const exists = await prisma.skill.findFirst({ where: { name } });
     if (!exists) await prisma.skill.create({ data: { name, category } });
   }
+  for (let i = 7; i <= 20; i++) {
+    const name = `مهارة عربية تجريبية ${i}`;
+    if (!(await prisma.skill.findFirst({ where: { name } }))) await prisma.skill.create({ data: { name, category: i % 2 ? "لغوي" : "معرفي", description: "مهارة إضافية لبيانات العرض." } });
+  }
+  for (let i = 6; i <= 20; i++) {
+    const name = `مرحلة تجريبية ${i}`;
+    const stage = await prisma.academyStage.findFirst({ where: { name } }) ?? await prisma.academyStage.create({ data: { name, ageMin: 2 + i % 10, ageMax: 4 + i % 12, description: "مرحلة تعليمية عربية تجريبية." } });
+    if (!(await prisma.academyProgram.findFirst({ where: { title: `برنامج عربي تجريبي ${i}` } }))) await prisma.academyProgram.create({ data: { stageId: stage.id, title: `برنامج عربي تجريبي ${i}`, description: "برنامج متكامل للعرض والتجربة.", objectives: "اللغة والحساب والمهارات الحياتية", subjectsJson: ["اللغة العربية", "الرياضيات", "الفنون"] } });
+  }
+  for (let i = 2; i <= 21; i++) {
+    const staffUser = await prisma.user.upsert({ where: { email: `staff${i}@test.com` }, update: { active: true, passwordHash, role: "STAFF" }, create: { name: `أخصائي عربي ${i}`, email: `staff${i}@test.com`, phone: `0117${String(1000000 + i).padStart(7, "0")}`, passwordHash, role: "STAFF" } });
+    await prisma.staffProfile.upsert({ where: { userId: staffUser.id }, update: {}, create: { userId: staffUser.id, specialization: i % 2 ? "إرشاد أسري" : "أنشطة تعليمية", bio: `ملف أخصائي عربي تجريبي رقم ${i}.` } });
+  }
 
   const testClass = await prisma.class.upsert({
     where: { inviteCode: "TEST01" },
@@ -179,7 +192,7 @@ async function main() {
 
   // بيانات كثيرة للاختبار — كل عنصر له مفتاح ثابت حتى يمكن تشغيل seed أكثر من مرة.
   const bulkTeachers = [];
-  for (let i = 2; i <= 9; i++) {
+  for (let i = 2; i <= 21; i++) {
     const bulkTeacher = await prisma.user.upsert({ where: { email: `teacher${i}@test.com` }, update: { active: true, passwordHash }, create: { name: `مدرس اختبار ${i}`, email: `teacher${i}@test.com`, phone: `0116${String(1000000 + i).padStart(7, "0")}`, passwordHash, role: "TEACHER" } });
     await prisma.teacherProfile.upsert({ where: { userId: bulkTeacher.id }, update: {}, create: { userId: bulkTeacher.id, subject: i % 2 ? "لغة إنجليزية" : "رياضيات", bio: `بيانات مدرس رقم ${i} للاختبار.`, defaultHourlyRate: 100 + i * 10, defaultPlatformPercent: 25 + (i % 4) * 5, defaultFixedFee: 10 + i } });
     bulkTeachers.push(bulkTeacher);
@@ -218,7 +231,7 @@ async function main() {
     const sub = await prisma.nurserySubscription.findFirst({ where: { childId: child.id } }) ?? await prisma.nurserySubscription.create({ data: { childId: child.id, planName: "الباقة المتكاملة", monthlyAmount: 1800 + i * 25, discount: i % 4 === 0 ? 100 : 0, startDate: new Date(), nextDueDate: new Date(Date.now() + 30 * 86400000) } });
     if (!(await prisma.nurseryInvoice.findFirst({ where: { subscriptionId: sub.id } }))) await prisma.nurseryInvoice.create({ data: { invoiceNumber: `NINV-BULK-${String(i).padStart(3, "0")}`, childId: child.id, subscriptionId: sub.id, amount: sub.monthlyAmount.sub(sub.discount), dueDate: sub.nextDueDate } });
   }
-  for (let i = 1; i <= 12; i++) {
+  for (let i = 1; i <= 20; i++) {
     const event = await prisma.activity.findFirst({ where: { title: `فعالية اختبار ${i}` } }) ?? await prisma.activity.create({ data: { title: `فعالية اختبار ${i}`, type: i % 2 ? "فنية" : "رياضية", description: "فعالية تجريبية ببيانات كثيرة.", scheduledAt: new Date(Date.now() + (i + 1) * 86400000), location: i % 2 ? "قاعة الأنشطة" : "ملعب الأكاديمية", capacity: 20 + i, createdById: admin.id } });
     for (const child of bulkChildren.slice(0, 5)) await prisma.activityEnrollment.upsert({ where: { activityId_childId: { activityId: event.id, childId: child.id } }, update: {}, create: { activityId: event.id, childId: child.id, status: "REGISTERED" } });
   }
@@ -226,6 +239,111 @@ async function main() {
   for (let i = 0; i < bulkClasses.length; i++) {
     const egressId = `seed-egress-${i + 1}`;
     await prisma.recording.upsert({ where: { egressId }, update: {}, create: { egressId, classId: bulkClasses[i].id, title: `تسجيل اختبار ${i + 1}`, status: "STOPPED", durationSeconds: 1800 + i * 120, filePath: null, startedAt: new Date(Date.now() - (i + 1) * 86400000), endedAt: new Date(Date.now() - (i + 1) * 86400000 + 1800000) } });
+  }
+
+  // ===== بيانات عربية موسعة للصحة والأسرة والسجلات =====
+  const healthTenant = await prisma.tenant.findUnique({ where: { slug: "academy" } });
+  const demoChildren = [testChild, ...bulkChildren].slice(0, 20);
+  const healthNames = ["فحص دوري", "متابعة الطبيب", "زيارة العيادة", "قياس شهري", "مراجعة النمو"];
+  const vaccines = ["شلل الأطفال", "الثلاثي البكتيري", "الحصبة", "الالتهاب الكبدي", "الدرن"];
+  const foods = ["بيض وخبز ولبن", "أرز وفراخ وخضار", "شوربة عدس وسلطة", "مكرونة ولحم", "زبادي وفاكهة"];
+  for (let i = 0; i < demoChildren.length; i++) {
+    const child = demoChildren[i];
+    const date = new Date();
+    date.setDate(date.getDate() - i - 1);
+    date.setHours(0, 0, 0, 0);
+    const tenantId = healthTenant?.id ?? child.tenantId ?? null;
+    if (!(await prisma.growthRecord.findFirst({ where: { childId: child.id, date } }))) {
+      await prisma.growthRecord.create({ data: { childId: child.id, tenantId, date, weightKg: 12 + i * 0.35, heightCm: 88 + i * 1.2, headCm: 46 + i * 0.15, notes: `${healthNames[i % healthNames.length]} باللغة العربية.` } });
+    }
+    if (!(await prisma.vaccination.findFirst({ where: { childId: child.id, name: vaccines[i % vaccines.length], date } }))) {
+      await prisma.vaccination.create({ data: { childId: child.id, tenantId, name: vaccines[i % vaccines.length], dose: `الجرعة ${i % 3 + 1}`, date, nextDueDate: new Date(date.getTime() + 180 * 86400000), notes: "تم التسجيل من ملف المتابعة." } });
+    }
+    if (!(await prisma.sleepRecord.findFirst({ where: { childId: child.id, date } }))) {
+      await prisma.sleepRecord.create({ data: { childId: child.id, tenantId, date, hours: 7.5 + (i % 4) * 0.5, quality: i % 3 === 0 ? "جيدة" : i % 3 === 1 ? "متوسطة" : "ممتازة", notes: "روتين نوم عربي مستقر." } });
+    }
+    if (!(await prisma.nutritionRecord.findFirst({ where: { childId: child.id, date } }))) {
+      await prisma.nutritionRecord.create({ data: { childId: child.id, tenantId, date, meal: i % 2 ? "الغداء" : "الفطار", foods: foods[i % foods.length], notes: "وجبة متوازنة ومناسبة للعمر." } });
+    }
+    const medicineName = `فيتامين ${i + 1}`;
+    if (!(await prisma.medicine.findFirst({ where: { childId: child.id, name: medicineName } }))) {
+      await prisma.medicine.create({ data: { childId: child.id, tenantId, name: medicineName, dosage: `${5 + i % 4} مل`, frequency: i % 2 ? "مرة يوميًا" : "كل ٨ ساعات", startDate: date, endDate: new Date(date.getTime() + 14 * 86400000), active: i % 4 !== 0, notes: "بيان تجريبي، لا يستخدم كوصفة طبية." } });
+    }
+    const fileName = `تقرير-صحي-${i + 1}.txt`;
+    if (!(await prisma.healthDocument.findFirst({ where: { childId: child.id, fileName } }))) {
+      await prisma.healthDocument.create({ data: { childId: child.id, tenantId, title: `تقرير صحي للطفل ${i + 1}`, category: i % 2 ? "تقرير" : "متابعة", fileName, mimeType: "text/plain", sizeBytes: 128, storagePath: `uploads/health/${child.id}/demo-${i + 1}.txt`, uploadedById: admin.id } });
+    }
+  }
+
+  if (healthTenant) {
+    const healthHead = await prisma.person.findUnique({ where: { userId: parent.id } });
+    const family = await prisma.family.findFirst({ where: { tenantId: healthTenant.id, name: "عائلة الأكاديمية التجريبية" } }) ?? await prisma.family.create({ data: { tenantId: healthTenant.id, name: "عائلة الأكاديمية التجريبية", headPersonId: healthHead?.id ?? null } });
+    const demoPersons = [];
+    for (let i = 1; i <= 20; i++) {
+      const person = await prisma.person.upsert({ where: { externalKey: `demo-person:${i}` }, update: {}, create: { tenantId: healthTenant.id, fullName: `شخص عربي تجريبي ${i}`, birthDate: new Date(`${1990 + (i % 20)}-0${i % 9 + 1}-10`), gender: i % 2 ? "أنثى" : "ذكر", externalKey: `demo-person:${i}` } });
+      demoPersons.push(person);
+      await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: family.id, personId: person.id } }, update: { role: i < 3 ? "ولي أمر" : "فرد" }, create: { familyId: family.id, personId: person.id, role: i < 3 ? "ولي أمر" : "فرد", isPrimary: i === 1 } });
+    }
+    for (let i = 0; i < 20; i++) {
+      const eventTitle = `موعد الأسرة العربي ${i + 1}`;
+      if (!(await prisma.familyEvent.findFirst({ where: { tenantId: healthTenant.id, title: eventTitle } }))) {
+        const startsAt = new Date(Date.now() + (i + 1) * 86400000);
+        await prisma.familyEvent.create({ data: { tenantId: healthTenant.id, familyId: family.id, title: eventTitle, type: i % 3 === 0 ? "APPOINTMENT" : i % 3 === 1 ? "ACTIVITY" : "CUSTOM", startsAt, endsAt: new Date(startsAt.getTime() + 3600000), location: i % 2 ? "قاعة الأنشطة" : "المنزل", notes: "موعد تجريبي باللغة العربية.", createdById: demoPersons[i].id } });
+      }
+      const day = new Date();
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() + i);
+      const planTitle = `مهمة يومية عربية ${i + 1}`;
+      if (!(await prisma.planItem.findFirst({ where: { tenantId: healthTenant.id, title: planTitle } }))) {
+        await prisma.planItem.create({ data: { tenantId: healthTenant.id, familyId: family.id, day, title: planTitle, time: `${String(8 + i % 10).padStart(2, "0")}:00`, type: i % 2 ? "TASK" : "ACTIVITY", assignedToId: demoPersons[i].id, done: i % 4 === 0 } });
+      }
+    }
+  }
+
+  // جداول النظام التي تحتاج بيانات عرض أيضًا
+  const demoTenants = [healthTenant].filter((value): value is NonNullable<typeof healthTenant> => Boolean(value));
+  for (let i = 2; i <= 20; i++) {
+    const demoTenant = await prisma.tenant.upsert({ where: { slug: `عائلة-تجريبية-${i}` }, update: {}, create: { name: `عائلة عربية تجريبية ${i}`, slug: `عائلة-تجريبية-${i}`, type: "FAMILY", locale: "ar" } });
+    demoTenants.push(demoTenant);
+  }
+  if (healthTenant) {
+    const familyPersons = await prisma.person.findMany({ where: { tenantId: healthTenant.id }, take: 20 });
+    for (let i = 2; i <= 20; i++) {
+      const familyName = `أسرة عربية تجريبية ${i}`;
+      const family = await prisma.family.findFirst({ where: { tenantId: healthTenant.id, name: familyName } }) ?? await prisma.family.create({ data: { tenantId: healthTenant.id, name: familyName, headPersonId: familyPersons[(i - 2) % familyPersons.length]?.id ?? null } });
+      const person = familyPersons[(i - 2) % familyPersons.length];
+      if (person) await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: family.id, personId: person.id } }, update: {}, create: { familyId: family.id, personId: person.id, role: "فرد", isPrimary: false } });
+    }
+    for (let i = 0; i < 20; i++) {
+      const from = familyPersons[i];
+      const to = familyPersons[(i + 1) % familyPersons.length];
+      if (from && to && from.id !== to.id && !(await prisma.relationship.findFirst({ where: { tenantId: healthTenant.id, fromPersonId: from.id, toPersonId: to.id } }))) await prisma.relationship.create({ data: { tenantId: healthTenant.id, fromPersonId: from.id, toPersonId: to.id, type: i % 2 ? "SIBLING" : "GUARDIAN_OF", notes: "علاقة عائلية تجريبية باللغة العربية." } });
+    }
+  }
+  for (let i = 1; i <= 20; i++) {
+    const provider = i % 3 === 0 ? "OLLAMA" : i % 2 === 0 ? "OPENAI" : "GEMINI";
+    const modelName = `نموذج-عربي-${i}`;
+    if (!(await prisma.aiProvider.findFirst({ where: { provider, modelName } }))) await prisma.aiProvider.create({ data: { name: `مزود AI عربي ${i}`, provider, modelName, baseUrl: provider === "OLLAMA" ? "http://localhost:11434" : null, enabled: false, isDefault: false, supportsVision: provider !== "OLLAMA", temperature: 0.4, maxTokens: 1200, tenantId: i % 2 ? healthTenant?.id : null } });
+  }
+  for (let i = 1; i <= 20; i++) {
+    const roleName = `DEMO_ROLE_${i}`;
+    await prisma.accessRole.upsert({ where: { name: roleName }, update: {}, create: { name: roleName, label: `دور عربي تجريبي ${i}`, isSystem: false } });
+  }
+  for (let i = 1; i <= 20; i++) {
+    const chat = await prisma.telegramChat.upsert({ where: { chatId: `demo-chat-${i}` }, update: { userId: parent.id, tenantId: healthTenant?.id, linkedAt: new Date() }, create: { chatId: `demo-chat-${i}`, userId: parent.id, tenantId: healthTenant?.id, linkedAt: new Date() } });
+    const code = `9${String(i).padStart(5, "0")}`;
+    await prisma.telegramLinkCode.upsert({ where: { code }, update: {}, create: { code, userId: parent.id, tenantId: healthTenant?.id, expiresAt: new Date(Date.now() + 7 * 86400000) } });
+    void chat;
+  }
+  const payoutPayments = await prisma.payment.findMany({ where: { classId: { not: null } }, include: { class: { select: { teacherId: true } } }, take: 20 });
+  for (const payment of payoutPayments) {
+    if (payment.class?.teacherId && !(await prisma.payout.findUnique({ where: { paymentId: payment.id } }))) await prisma.payout.create({ data: { paymentId: payment.id, teacherId: payment.class.teacherId, grossAmount: payment.amount, platformFee: Number(payment.amount) * 0.3, teacherAmount: Number(payment.amount) * 0.7, status: "PAID", paidAt: new Date() } });
+  }
+
+  const auditUsers = [admin, cashier, teacher, student, parent, staff];
+  for (let i = 0; i < 20; i++) {
+    const action = `تسجيل نشاط عربي ${i + 1}`;
+    if (!(await prisma.auditLog.findFirst({ where: { action } }))) await prisma.auditLog.create({ data: { actorId: auditUsers[i % auditUsers.length].id, action, entity: i % 2 ? "Child" : "FamilyEvent", entityId: demoChildren[i % demoChildren.length].id, details: { description: "سجل تجريبي باللغة العربية" } } });
   }
 
   // ===== M3: الصلاحيات (RBAC) =====
