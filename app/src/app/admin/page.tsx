@@ -22,6 +22,8 @@ const adminNav = [
   { href: "/admin/ai", title: "الذكاء الاصطناعي", icon: "🤖", color: "from-purple-500 to-indigo-600" },
   { href: "/admin/permissions", title: "الأدوار والصلاحيات", icon: "🔐", color: "from-teal-500 to-cyan-600" },
   { href: "/admin/telegram", title: "بوت تيليجرام", icon: "✈️", color: "from-sky-500 to-blue-600" },
+  { href: "/family", title: "لوحة الأسرة", icon: "🏠", color: "from-orange-500 to-amber-600" },
+  { href: "/family/education", title: "التعليم المنزلي", icon: "📚", color: "from-emerald-500 to-green-600" },
 ];
 
 export default async function AdminDashboardPage() {

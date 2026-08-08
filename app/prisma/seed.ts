@@ -432,6 +432,12 @@ async function main() {
     { name: "يوسف", email: "youssef@family.local", birthYear: 2019, grade: "KG 2" },
   ];
   const homeChildRecords: { id: string; name: string }[] = [];
+  const adminPerson = await prisma.person.findUnique({ where: { userId: admin.id } });
+  const parentGuardian = await prisma.person.findUnique({ where: { userId: parent.id } });
+  const homeFamily = healthTenant
+    ? (await prisma.family.findFirst({ where: { tenantId: healthTenant.id, name: "عائلة المنزل" } }) ??
+        await prisma.family.create({ data: { tenantId: healthTenant.id, name: "عائلة المنزل", headPersonId: adminPerson?.id ?? null } }))
+    : null;
   for (const hc of homeChildren) {
     const studentUser = await prisma.user.upsert({
       where: { email: hc.email },
@@ -440,13 +446,15 @@ async function main() {
     });
     const child = await prisma.child.findFirst({ where: { name: hc.name } }) ?? await prisma.child.create({ data: { name: hc.name, birthDate: new Date(`${hc.birthYear}-01-01`), schoolGrade: hc.grade, stage: hc.grade.includes("KG") ? "KG 2" : "ابتدائي", tenantId: healthTenant?.id } });
     await prisma.childGuardian.upsert({ where: { childId_guardianId: { childId: child.id, guardianId: parent.id } }, update: { primary: true }, create: { childId: child.id, guardianId: parent.id, primary: true } });
+    await prisma.childGuardian.upsert({ where: { childId_guardianId: { childId: child.id, guardianId: admin.id } }, update: { primary: true }, create: { childId: child.id, guardianId: admin.id, primary: true } });
     if (healthTenant) {
       await prisma.person.upsert({ where: { externalKey: `child:${child.id}` }, update: { userId: studentUser.id, fullName: hc.name }, create: { tenantId: healthTenant.id, fullName: hc.name, externalKey: `child:${child.id}`, userId: studentUser.id } });
-      // add to first family for getMyChildren to work
-      const family = await prisma.family.findFirst({ where: { tenantId: healthTenant.id }, orderBy: { createdAt: "asc" } });
-      if (family) {
-        const person = await prisma.person.findUnique({ where: { externalKey: `child:${child.id}` } });
-        if (person) await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: family.id, personId: person.id } }, update: {}, create: { familyId: family.id, personId: person.id, role: "طفل" } });
+      // ربط الطفل بعائلة المنزل (رب الأسرة = الأدمن) ليعمل getMyChildren
+      const person = await prisma.person.findUnique({ where: { externalKey: `child:${child.id}` } });
+      if (person && homeFamily) {
+        await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: homeFamily.id, personId: person.id } }, update: {}, create: { familyId: homeFamily.id, personId: person.id, role: "طفل" } });
+        if (adminPerson) await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: homeFamily.id, personId: adminPerson.id } }, update: {}, create: { familyId: homeFamily.id, personId: adminPerson.id, role: "ولي أمر", isPrimary: true } });
+        if (parentGuardian) await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: homeFamily.id, personId: parentGuardian.id } }, update: {}, create: { familyId: homeFamily.id, personId: parentGuardian.id, role: "ولي أمر" } });
       }
     }
     const studentRole = await prisma.accessRole.findUnique({ where: { name: "STUDENT" } });

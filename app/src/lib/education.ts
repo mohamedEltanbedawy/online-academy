@@ -3,7 +3,6 @@ import { cache } from "react";
 import { prisma } from "./prisma";
 import { getMyChildren } from "./family";
 import { getCurrentUser } from "./auth";
-import { getMyTenantId } from "./family";
 
 export const getChildSubjects = cache(async (childId: string) => {
   return prisma.subject.findMany({
