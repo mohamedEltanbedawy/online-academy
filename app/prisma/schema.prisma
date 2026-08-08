@@ -136,6 +136,22 @@ enum PlanItemType {
   REMINDER // تذكير
 }
 
+// نوع المادة التعليمية في المنزل
+enum SubjectType {
+  SCHOOL      // مدرسي
+  ENGLISH     // إنجليزي
+  SOFT_SKILLS // سوفت سكيلز
+  COMPUTER    // كمبيوتر
+  PROGRAMMING // برمجة
+}
+
+// نوع بند الجدول الأسبوعي
+enum ScheduleEntryType {
+  LESSON   // حصة
+  HOMEWORK // وقت واجب
+  EXERCISE // وقت تمرين
+}
+
 // المستخدم (مدرس / طالب / أدمن / موظف)
 model User {
   id           String   @id @default(cuid())
@@ -369,6 +385,9 @@ model Child {
   nutritionRecords NutritionRecord[]
   medicines Medicine[]
   healthDocuments HealthDocument[]
+  subjects Subject[]
+  tutoringLessons TutoringLesson[]
+  weeklySchedules WeeklySchedule[]
 
   @@index([tenantId])
 }
@@ -913,4 +932,90 @@ model TelegramLinkCode {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// ===== M4: التعلم المنزلي =====
+
+// مادة أو كتاب لطفل
+model Subject {
+  id          String      @id @default(cuid())
+  childId     String
+  child       Child       @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name        String      // اسم المادة
+  type        SubjectType @default(SCHOOL)
+  description String?     // وصف المادة
+  bookTitle   String?     // اسم الكتاب
+  teacher     String?     // اسم المدرس (ولي الأمر أو مدرس خصوصي)
+  active      Boolean     @default(true)
+  tenantId    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  lessons   TutoringLesson[]
+  schedules WeeklySchedule[]
+
+  @@index([childId])
+  @@index([tenantId])
+}
+
+// سجل حصة خصوصية
+model TutoringLesson {
+  id        String   @id @default(cuid())
+  childId   String
+  child     Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  date      DateTime // تاريخ الحصة
+  startTime String?  // "HH:mm"
+  duration  Int?     // المدة بالدقائق
+  teacher   String?  // اسم من شرح الحصة
+  content   String   // المحتوى: ايه اتشرح في الحصة
+  notes     String?
+  tenantId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  homework LessonHomework[]
+
+  @@index([childId, date])
+  @@index([subjectId])
+  @@index([tenantId])
+}
+
+// واجب مرتبط بحصة
+model LessonHomework {
+  id          String         @id @default(cuid())
+  lessonId    String
+  lesson      TutoringLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  description String         // وصف الواجب
+  dueDate     DateTime?      // موعد التسليم
+  status      String         @default("PENDING") // PENDING / DONE
+  doneAt      DateTime?
+  notes       String?
+  tenantId    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([lessonId])
+  @@index([tenantId])
+}
+
+// جدول أسبوعي للطفل
+model WeeklySchedule {
+  id        String            @id @default(cuid())
+  childId   String
+  child     Child             @relation(fields: [childId], references: [id], onDelete: Cascade)
+  subjectId String?
+  subject   Subject?          @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  dayOfWeek Int               // 0=الجمعة ... 6=الخميس
+  startTime String            // "HH:mm"
+  endTime   String?           // "HH:mm"
+  label     String            // العنوان الظاهر
+  type      ScheduleEntryType @default(LESSON)
+  tenantId  String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([childId, dayOfWeek])
+  @@index([tenantId])
 }

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, SubjectType, ScheduleEntryType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 // ملف إنشاء حسابات جاهزة (أدمن + موظف بيع)
@@ -425,6 +425,138 @@ async function main() {
     await prisma.aiProvider.updateMany({ where: { provider: "GEMINI" }, data: { apiKey: geminiApiKey } });
   }
 
+  // ===== M4: التعليم المنزلي (3 أولاد مع حسابات طلاب) =====
+  const homeChildren = [
+    { name: "أحمد", email: "ahmed@family.local", birthYear: 2014, grade: "الصف السادس الابتدائي" },
+    { name: "مريم", email: "maryam@family.local", birthYear: 2017, grade: "الصف الثالث الابتدائي" },
+    { name: "يوسف", email: "youssef@family.local", birthYear: 2019, grade: "KG 2" },
+  ];
+  const homeChildRecords: { id: string; name: string }[] = [];
+  for (const hc of homeChildren) {
+    const studentUser = await prisma.user.upsert({
+      where: { email: hc.email },
+      update: { active: true, passwordHash, role: "STUDENT" },
+      create: { name: hc.name, email: hc.email, phone: `011${String(90000000 + homeChildren.indexOf(hc))}`, passwordHash, role: "STUDENT" },
+    });
+    const child = await prisma.child.findFirst({ where: { name: hc.name } }) ?? await prisma.child.create({ data: { name: hc.name, birthDate: new Date(`${hc.birthYear}-01-01`), schoolGrade: hc.grade, stage: hc.grade.includes("KG") ? "KG 2" : "ابتدائي", tenantId: healthTenant?.id } });
+    await prisma.childGuardian.upsert({ where: { childId_guardianId: { childId: child.id, guardianId: parent.id } }, update: { primary: true }, create: { childId: child.id, guardianId: parent.id, primary: true } });
+    if (healthTenant) {
+      await prisma.person.upsert({ where: { externalKey: `child:${child.id}` }, update: { userId: studentUser.id, fullName: hc.name }, create: { tenantId: healthTenant.id, fullName: hc.name, externalKey: `child:${child.id}`, userId: studentUser.id } });
+      // add to first family for getMyChildren to work
+      const family = await prisma.family.findFirst({ where: { tenantId: healthTenant.id }, orderBy: { createdAt: "asc" } });
+      if (family) {
+        const person = await prisma.person.findUnique({ where: { externalKey: `child:${child.id}` } });
+        if (person) await prisma.familyMember.upsert({ where: { familyId_personId: { familyId: family.id, personId: person.id } }, update: {}, create: { familyId: family.id, personId: person.id, role: "طفل" } });
+      }
+    }
+    const studentRole = await prisma.accessRole.findUnique({ where: { name: "STUDENT" } });
+    if (studentRole) await prisma.userRole.upsert({ where: { userId_roleId: { userId: studentUser.id, roleId: studentRole.id } }, update: {}, create: { userId: studentUser.id, roleId: studentRole.id } });
+    homeChildRecords.push(child);
+  }
+
+  // مواد وحصص وجدول لكل طفل من الثلاثة
+  const homeSubjects: { childIdx: number; name: string; type: string; bookTitle: string; teacher: string }[] = [
+    { childIdx: 0, name: "رياضيات", type: "SCHOOL", bookTitle: "المعاصر", teacher: "أب" },
+    { childIdx: 0, name: "لغة عربية", type: "SCHOOL", bookTitle: "الأضواء", teacher: "أم" },
+    { childIdx: 0, name: "إنجليزي", type: "ENGLISH", bookTitle: "Connect Plus", teacher: "مدرس خصوصي" },
+    { childIdx: 0, name: "برمجة", type: "PROGRAMMING", bookTitle: "Scratch", teacher: "أب" },
+    { childIdx: 0, name: "كمبيوتر", type: "COMPUTER", bookTitle: "ICDL Junior", teacher: "أب" },
+    { childIdx: 1, name: "رياضيات", type: "SCHOOL", bookTitle: "المعاصر", teacher: "أم" },
+    { childIdx: 1, name: "لغة عربية", type: "SCHOOL", bookTitle: "الأضواء", teacher: "أم" },
+    { childIdx: 1, name: "إنجليزي", type: "ENGLISH", bookTitle: "Connect", teacher: "مدرس خصوصي" },
+    { childIdx: 1, name: "سوفت سكيلز", type: "SOFT_SKILLS", bookTitle: "قصص أطفال", teacher: "أم" },
+    { childIdx: 2, name: "تأسيس حساب", type: "SCHOOL", bookTitle: "بكار", teacher: "أب" },
+    { childIdx: 2, name: "تأسيس لغة عربية", type: "SCHOOL", bookTitle: "نور البيان", teacher: "أم" },
+    { childIdx: 2, name: "إنجليزي تمهيدي", type: "ENGLISH", bookTitle: "Jolly Phonics", teacher: "أم" },
+  ];
+  const createdSubjects: { childIdx: number; id: string }[] = [];
+  for (const hs of homeSubjects) {
+    const child = homeChildRecords[hs.childIdx];
+    const subj = await prisma.subject.upsert({
+      where: { id: `seed-subj-${hs.childIdx}-${hs.name}` },
+      update: {},
+      create: { id: `seed-subj-${hs.childIdx}-${hs.name}`, childId: child.id, tenantId: healthTenant?.id, name: hs.name, type: hs.type as SubjectType, bookTitle: hs.bookTitle, teacher: hs.teacher },
+    });
+    createdSubjects.push({ childIdx: hs.childIdx, id: subj.id });
+  }
+
+  // حصص تجريبية لكل طفل
+  const lessonContents = [
+    "شرح درس جمع وطرح الأعداد العشرية. حل تمارين 1-5 صفحة 34.",
+    "درس الفاعل والمفعول به. إعراب 3 جمل كتابة.",
+    "Unit 4 Lesson 2: Past simple tense. تمارين محلولة شفهيًا.",
+    "تعلم أوامر التحكم والتكرار في Scratch. بناء لعبة المتاهة خطوة بخطوة.",
+    "أجزاء الكمبيوتر الخارجية والداخلية. الفأرة ولوحة المفاتيح والشاشة.",
+    "ضرب الأعداد المكونة من رقمين. تمارين صفحة 28.",
+    "حرف الراء والزاي. كتابة وتوصيل وتلوين.",
+    "English alphabet A-M. Phonics song and writing.",
+    "قصة الأرنب والسلحفاة. استخراج القيم والعبر.",
+    "تعلم الأعداد من 1 إلى 20. توصيل العدد بالصورة.",
+    "أصوات الحروف: ب، ت، ث. قراءة وكتابة.",
+    "English: colors and shapes. Red, blue, circle, square.",
+  ];
+  for (let i = 0; i < lessonContents.length; i++) {
+    const childIdx = i % 3;
+    const child = homeChildRecords[childIdx];
+    const childSubjs = createdSubjects.filter((s) => s.childIdx === childIdx);
+    const subjectId = childSubjs[i % childSubjs.length]?.id;
+    if (!subjectId) continue;
+    if (await prisma.tutoringLesson.findFirst({ where: { childId: child.id, subjectId, content: lessonContents[i] } })) continue;
+    const lesson = await prisma.tutoringLesson.create({
+      data: {
+        childId: child.id, tenantId: healthTenant?.id, subjectId,
+        date: new Date(Date.now() - (i + 1) * 86400000),
+        startTime: `${String(16 + i % 4).padStart(2, "0")}:00`,
+        duration: 45 + i % 3 * 15,
+        teacher: i % 3 === 0 ? "أب" : i % 3 === 1 ? "أم" : "مدرس خصوصي",
+        content: lessonContents[i],
+        notes: "شرح ممتاز وتفاعل جيد من الطفل.",
+      },
+    });
+    // واجب لكل حصة
+    await prisma.lessonHomework.create({
+      data: {
+        lessonId: lesson.id, tenantId: healthTenant?.id,
+        description: i % 3 === 0 ? "حل باقي التمارين من صفحة 35" : i % 3 === 1 ? "كتابة 5 جمل جديدة" : "حفظ الكلمات الجديدة",
+        dueDate: new Date(Date.now() - (i - 1) * 86400000),
+        status: i % 2 === 0 ? "DONE" : "PENDING",
+        doneAt: i % 2 === 0 ? new Date(Date.now() - (i - 2) * 86400000) : null,
+      },
+    });
+  }
+
+  // جدول أسبوعي لكل طفل
+  const timetableEntries: { childIdx: number; dayOfWeek: number; startTime: string; endTime: string; label: string; type: string }[] = [
+    { childIdx: 0, dayOfWeek: 1, startTime: "10:00", endTime: "11:00", label: "رياضيات", type: "LESSON" },
+    { childIdx: 0, dayOfWeek: 1, startTime: "11:00", endTime: "12:00", label: "إنجليزي", type: "LESSON" },
+    { childIdx: 0, dayOfWeek: 1, startTime: "12:00", endTime: "13:00", label: "وقت واجب الرياضيات", type: "HOMEWORK" },
+    { childIdx: 0, dayOfWeek: 2, startTime: "10:00", endTime: "11:00", label: "عربي", type: "LESSON" },
+    { childIdx: 0, dayOfWeek: 2, startTime: "18:00", endTime: "19:00", label: "برمجة", type: "LESSON" },
+    { childIdx: 0, dayOfWeek: 3, startTime: "10:00", endTime: "11:00", label: "كمبيوتر", type: "LESSON" },
+    { childIdx: 0, dayOfWeek: 4, startTime: "10:00", endTime: "11:00", label: "رياضيات", type: "LESSON" },
+    { childIdx: 0, dayOfWeek: 4, startTime: "17:00", endTime: "18:00", label: "تمرين", type: "EXERCISE" },
+    { childIdx: 1, dayOfWeek: 1, startTime: "09:00", endTime: "10:00", label: "رياضيات", type: "LESSON" },
+    { childIdx: 1, dayOfWeek: 2, startTime: "09:00", endTime: "10:00", label: "عربي", type: "LESSON" },
+    { childIdx: 1, dayOfWeek: 3, startTime: "09:00", endTime: "10:00", label: "إنجليزي", type: "LESSON" },
+    { childIdx: 1, dayOfWeek: 4, startTime: "09:00", endTime: "10:00", label: "سوفت سكيلز", type: "LESSON" },
+    { childIdx: 1, dayOfWeek: 5, startTime: "18:00", endTime: "18:30", label: "تمرين", type: "EXERCISE" },
+    { childIdx: 2, dayOfWeek: 6, startTime: "08:00", endTime: "09:00", label: "تأسيس حساب", type: "LESSON" },
+    { childIdx: 2, dayOfWeek: 6, startTime: "09:00", endTime: "09:30", label: "تأسيس عربي", type: "LESSON" },
+    { childIdx: 2, dayOfWeek: 6, startTime: "10:00", endTime: "10:30", label: "إنجليزي تمهيدي", type: "LESSON" },
+    { childIdx: 2, dayOfWeek: 5, startTime: "17:00", endTime: "17:30", label: "تمرين", type: "EXERCISE" },
+  ];
+  for (const entry of timetableEntries) {
+    const child = homeChildRecords[entry.childIdx];
+    if (await prisma.weeklySchedule.findFirst({ where: { childId: child.id, dayOfWeek: entry.dayOfWeek, startTime: entry.startTime, label: entry.label } })) continue;
+    await prisma.weeklySchedule.create({
+      data: {
+        childId: child.id, tenantId: healthTenant?.id,
+        dayOfWeek: entry.dayOfWeek, startTime: entry.startTime, endTime: entry.endTime,
+        label: entry.label, type: entry.type as ScheduleEntryType,
+      },
+    });
+  }
+
   console.log("تم إنشاء الحسابات التالية:");
   console.log("أدمن   :", admin.email, "/ Admin@123456");
   console.log("موظف   :", cashier.email, "/ Admin@123456");
@@ -432,6 +564,9 @@ async function main() {
   console.log("طالب   :", student.email, "/ Admin@123456");
   console.log("ولي أمر:", parent.email, "/ Admin@123456");
   console.log("أخصائية:", staff.email, "/ Admin@123456");
+  console.log("الطفل  :", "ahmed@family.local", "/ Admin@123456 (أحمد)");
+  console.log("الطفلة:", "maryam@family.local", "/ Admin@123456 (مريم)");
+  console.log("الطفل  :", "youssef@family.local", "/ Admin@123456 (يوسف)");
   console.log("كود فصل الاختبار: TEST01");
 }
 

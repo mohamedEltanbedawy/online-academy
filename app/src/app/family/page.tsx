@@ -28,6 +28,7 @@ export default async function FamilyPage() {
           <Link href="/family/calendar" className="btn-outline">التقويم</Link>
           <Link href="/family/events" className="btn-outline">الأحداث</Link>
           <Link href="/family/members" className="btn-outline">الأفراد</Link>
+          <Link href="/family/education" className="btn-outline">التعليم المنزلي</Link>
         </>
       }
     >
@@ -126,6 +127,7 @@ export default async function FamilyPage() {
                     <div className="mt-4 flex gap-4">
                       <Link href={`/parent/children/${child.id}`} className="text-sm font-bold text-blue-600 hover:underline">ملف الطفل ←</Link>
                       <Link href={`/family/health/${child.id}`} className="text-sm font-bold text-emerald-600 hover:underline">الصحة ←</Link>
+                      <Link href={`/family/education/${child.id}`} className="text-sm font-bold text-violet-600 hover:underline">التعليم ←</Link>
                     </div>
                   </article>
                 ))}
