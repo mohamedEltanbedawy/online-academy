@@ -28,7 +28,7 @@ const roleNav: Record<string, { href: string; label: string }[]> = {
     { href: "/teacher/profile", label: "بياناتي" },
   ],
   STUDENT: [{ href: "/student", label: "لوحة الطالب" }],
-  ADMIN: [{ href: "/admin", label: "لوحة الإدارة" }],
+  ADMIN: [{ href: "/admin", label: "لوحة الإدارة" }, { href: "/family", label: "عائلتي" }],
   CASHIER: [{ href: "/cashier", label: "التحصيل" }],
   PARENT: [{ href: "/parent", label: "أطفالي" }, { href: "/family", label: "عائلتي" }],
   STAFF: [{ href: "/staff", label: "الأطفال" }],
